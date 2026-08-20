@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>{{ title }} - 邮箱查看工具</title>
+  <link rel="stylesheet" href="/static/style.css?v=25">
+</head>
+<body>
+  <main class="container public-page share-invalid-page">
+    <section class="card share-invalid-card" role="alert" aria-labelledby="invalid-title">
+      <div class="share-invalid-icon" aria-hidden="true">!</div>
+      <h1 id="invalid-title">{{ title }}</h1>
+      <p>{{ detail }}</p>
+      <p class="hint">为保护邮箱隐私，此页面不会显示目标邮箱，也不能继续查询。</p>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>邮箱源管理</title><link rel="stylesheet" href="/static/style.css?v=28"></head>
+<body class="admin-shell">
+<button class="admin-menu-toggle" id="admin-menu-toggle" type="button" aria-label="打开菜单" aria-controls="admin-sidebar" aria-expanded="false"><span></span><span></span><span></span></button>
+<div class="admin-sidebar-overlay" id="admin-sidebar-overlay"></div>
+<aside class="admin-sidebar" id="admin-sidebar">
+  <div class="admin-brand"><strong>邮箱管理</strong><small>管理控制台</small></div>
+  <nav class="admin-nav" aria-label="后台菜单">
+    <a href="#query-stats">查询统计</a><a href="#sources-card">邮箱源管理</a><a href="#query-settings">查询设置</a><a href="#code-rules">验证码规则</a><a href="#source-performance">邮箱源性能</a><a href="#share-links">临时查询链接</a><a href="#blacklist-section">黑名单</a><a href="#admin-password">修改密码</a><a href="#view-records">查看记录</a>
+  </nav>
+  <div class="admin-sidebar-footer"><a href="/">回到接码页</a><a href="/admin/logout">退出登录</a></div>
+</aside>
+<main class="container wide admin-page"><header class="admin-mobile-header"><b>邮箱管理</b></header>
+  <h1>邮箱源管理</h1>
+  <p class="hint">Gmail 与 QQ 邮箱可同时启用。QQ 邮箱请使用 IMAP 授权码，不要填写 QQ 登录密码。</p>
+  <p id="admin-global-msg" class="bl-msg{% if message %} {% if message_type == 'error' %}error{% else %}ok{% endif %}{% endif %}">{% if message %}{{ message }}{% endif %}</p>
+  <section class="card stats-card" id="query-stats">
+    <div class="records-heading"><h2>查询统计</h2><button type="button" class="secondary stats-refresh" id="stats-refresh">刷新</button></div>
+    <div class="stats-grid"><div class="stat-item"><span>今日查询</span><strong id="stat-today">{{ query_stats.today_queries }}</strong></div><div class="stat-item"><span>今日邮箱</span><strong id="stat-unique-today">{{ query_stats.today_unique }}</strong></div><div class="stat-item"><span>累计查询</span><strong id="stat-total">{{ query_stats.total_queries }}</strong></div><div class="stat-item"><span>累计邮箱</span><strong id="stat-unique-total">{{ query_stats.total_unique }}</strong></div></div>
+    <div class="stats-lists"><div><h3>常用邮箱</h3><ol id="stats-top">{% for row in query_stats.top %}<li><span>{{ row.email }}</span><b>{{ row.count }} 次{% if row.today %} · 今日 {{ row.today }}{% endif %}</b></li>{% else %}<li class="hint">暂无查询数据</li>{% endfor %}</ol></div><div><h3>邮箱源状态</h3><ul id="stats-sources">{% for row in query_stats.sources %}<li><span>{{ row.name }}</span><b>{{ {'ok':'正常','error':'异常','paused':'暂停'}.get(row.status, '未测试') }}</b></li>{% else %}<li class="hint">暂无邮箱源</li>{% endfor %}</ul></div></div>
+  </section>
+
+  <section class="card" id="sources-card"><h2>已配置邮箱源</h2>
+    {% if cfg.accounts %}
+      {% for account in cfg.accounts %}
+      <details class="account-item">
+        <summary><b>{{ account.account_name }}</b><span><span class="account-address">{{ account.imap_user }}</span><span class="account-enabled">{% if account.enabled %}已启用{% else %}已停用{% endif %}</span><em class="health-badge" data-health-id="{{ account.id }}">未测试</em></span></summary>
+        <form method="post" class="grid account-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="save_account"><input type="hidden" name="account_id" value="{{ account.id }}">
+          <label>类型</label><select name="provider" data-provider-select><option value="gmail" {% if account.provider == 'gmail' %}selected{% endif %}>Gmail</option><option value="qq" {% if account.provider == 'qq' %}selected{% endif %}>QQ 邮箱</option><option value="outlook" {% if account.provider == 'outlook' %}selected{% endif %}>Outlook / Hotmail</option><option value="icloud" {% if account.provider == 'icloud' %}selected{% endif %}>iCloud Mail</option><option value="netease163" {% if account.provider == 'netease163' %}selected{% endif %}>网易 163</option><option value="netease126" {% if account.provider == 'netease126' %}selected{% endif %}>网易 126</option><option value="sina" {% if account.provider == 'sina' %}selected{% endif %}>新浪邮箱</option><option value="yahoo" {% if account.provider == 'yahoo' %}selected{% endif %}>Yahoo Mail</option><option value="zoho" {% if account.provider == 'zoho' %}selected{% endif %}>Zoho Mail</option><option value="custom" {% if account.provider == 'custom' %}selected{% endif %}>自定义 IMAP</option></select>
+          <label>名称</label><input name="account_name" value="{{ account.account_name }}" required>
+          <label>邮箱账号</label><input name="imap_user" type="email" value="{{ account.imap_user }}" required>
+          <label data-password-label>授权码 / App Password</label><input name="imap_password" type="password" value="" placeholder="留空表示不修改" autocomplete="new-password">
+          <label>邮箱文件夹</label><input name="mailbox" value="{{ account.mailbox }}" required><label>优先级（小值先查）</label><input name="priority" type="number" min="1" max="999" value="{{ account.priority }}"><label>超时秒数</label><input name="timeout_seconds" type="number" min="3" max="60" value="{{ account.timeout_seconds }}">
+          <label>启用</label><input name="enabled" type="checkbox" {% if account.enabled %}checked{% endif %}>
+          <div class="custom-imap"><label>IMAP 地址</label><input name="imap_host" data-imap-host value="{{ account.imap_host }}"><label>端口</label><input name="imap_port" type="number" value="{{ account.imap_port }}"><label>SSL</label><input name="use_ssl" type="checkbox" {% if account.use_ssl %}checked{% endif %}></div>
+          <div class="account-actions"><button class="account-save" type="submit">保存邮箱源</button><button class="secondary account-test" type="button" data-account-id="{{ account.id }}">测试连接</button><button class="secondary account-retry" type="button" data-account-id="{{ account.id }}" hidden>立即重试</button></div><p class="health-detail hint" data-health-detail="{{ account.id }}"></p>
+        </form>
+        <form class="account-delete-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="delete_account"><input type="hidden" name="account_id" value="{{ account.id }}"><button class="danger" type="submit">删除</button></form>
+      </details>
+      {% endfor %}
+    {% else %}<p class="hint">尚未配置邮箱源</p>{% endif %}
+    <details class="account-item add-account-item">
+    <summary><b>添加邮箱源</b></summary>
+    <form method="post" class="grid account-form add-account-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="save_account">
+      <label>类型</label><select name="provider" id="new-provider" data-provider-select><option value="qq">QQ 邮箱</option><option value="gmail">Gmail</option><option value="outlook">Outlook / Hotmail</option><option value="icloud">iCloud Mail</option><option value="netease163">网易 163</option><option value="netease126">网易 126</option><option value="sina">新浪邮箱</option><option value="yahoo">Yahoo Mail</option><option value="zoho">Zoho Mail</option><option value="custom">自定义 IMAP</option></select>
+      <label>名称</label><input name="account_name" value="QQ邮箱" required>
+      <label>邮箱账号</label><input name="imap_user" type="email" placeholder="123456@qq.com" required>
+      <label data-password-label>IMAP 授权码</label><input name="imap_password" type="password" autocomplete="new-password" required><p class="hint" data-password-help>请填写 QQ 邮箱生成的 IMAP 授权码，不要使用 QQ 登录密码。</p>
+      <label>邮箱文件夹</label><input name="mailbox" value="INBOX" required><label>优先级（小值先查）</label><input name="priority" type="number" min="1" max="999" value="100"><label>超时秒数</label><input name="timeout_seconds" type="number" min="3" max="60" value="12">
+      <label>启用</label><input name="enabled" type="checkbox" checked>
+      <div class="custom-imap"><label>IMAP 地址</label><input name="imap_host" data-imap-host value="imap.qq.com"><label>端口</label><input name="imap_port" type="number" value="993"><label>SSL</label><input name="use_ssl" type="checkbox" checked></div>
+      <button class="account-save" type="submit">添加邮箱源</button>
+    </form>
+    </details>
+  </section>
+
+  <form method="post" id="query-settings" class="card grid settings-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save_settings"><h2>查询设置</h2><label>搜索最近天数</label><input name="search_since_days" value="{{ cfg.search_since_days }}" type="number" min="1" max="30"><label>每个邮箱最多读取</label><input name="max_emails" value="{{ cfg.max_emails }}" type="number" min="1" max="200"><label>最大并发邮箱源</label><input name="max_concurrency" value="{{ cfg.max_concurrency }}" type="number" min="1" max="16"><button type="submit">保存查询设置</button></form>
+
+
+  <section class="card" id="code-rules"><h2>验证码识别规则</h2><form method="post" class="grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save_code_rules"><label>关键词（每行一个）</label><textarea name="keywords" rows="8">{{ cfg.code_rules.keywords|join('
+') }}</textarea><label>最短长度</label><input name="min_length" type="number" min="3" max="12" value="{{ cfg.code_rules.min_length }}"><label>最长长度</label><input name="max_length" type="number" min="3" max="12" value="{{ cfg.code_rules.max_length }}"><label><input name="allow_alphanumeric" type="checkbox" {% if cfg.code_rules.allow_alphanumeric %}checked{% endif %}> 允许字母数字组合</label><button type="submit">保存识别规则</button></form><div class="rule-tester"><input id="rule-subject" placeholder="测试邮件主题"><textarea id="rule-body" rows="4" placeholder="粘贴邮件正文"></textarea><button type="button" class="secondary" id="rule-test">测试识别</button><p class="hint" id="rule-result"></p></div></section>
+  <section class="card" id="source-performance"><div class="records-heading"><h2>邮箱源性能</h2><button type="button" class="secondary" id="perf-refresh">刷新</button></div><div id="perf-list" class="table-wrap"><p class="hint">点击刷新加载性能数据</p></div></section>
+  <section class="card" id="share-links"><h2>临时查询链接</h2><form id="share-form" class="grid"><label>目标邮箱</label><input name="email" type="email" required><label>有效分钟</label><input name="minutes" type="number" min="1" max="10080" value="60"><label>最多使用次数</label><input name="max_uses" type="number" min="1" max="1000" value="1"><button type="submit">创建临时链接</button></form><div id="share-result" class="hint"></div><h3 class="share-list-title">已创建链接</h3><ul class="blacklist share-list" id="share-list">{% for link in cfg.share_links|reverse %}{% set state = share_state(link) %}<li data-share-token="{{ link.token }}"><span><strong>{{ link.email }}</strong><small>{{ link.uses }}/{{ link.max_uses }} 次 · {% if state == 'active' %}有效{% elif state == 'exhausted' %}已用完{% elif state == 'expired' %}已过期{% else %}已撤销{% endif %}</small></span><div class="share-actions">{% if state == 'active' %}<button type="button" class="secondary btn-sm share-copy-existing" data-url="{{ url_for('index', share=link.token, _external=True) }}">复制</button><button type="button" class="danger btn-sm share-revoke" data-token="{{ link.token }}">撤销</button>{% endif %}<button type="button" class="secondary btn-sm share-delete" data-token="{{ link.token }}">删除</button></div></li>{% else %}<li class="hint share-empty">暂无分享链接</li>{% endfor %}</ul></section>
+  <section class="card" id="blacklist-section"><h2>黑名单邮箱</h2>
+    <p class="hint">加入黑名单的邮箱查询流程不变，但不会返回任何邮件（可填写完整邮箱或 @域名）。</p>
+    <form method="post" class="grid" id="blacklist-add-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="add_blacklist">
+      <label>邮箱 / @域名</label><div class="blacklist-control"><input name="blacklist_entry" placeholder="someone@example.com 或 @example.com" required><button type="submit">加入黑名单</button></div>
+    </form>
+    <p class="bl-msg" id="bl-msg"></p>
+    <div id="bl-list" class="blacklist-list">
+    {% if cfg.blacklist %}
+      <ul class="blacklist">
+        {% for entry in cfg.blacklist %}
+        <li data-entry="{{ entry }}"><span>{{ entry }}</span><button type="button" class="danger btn-sm bl-remove" data-entry="{{ entry }}">移出</button></li>
+        {% endfor %}
+      </ul>
+    {% else %}<p class="hint">暂无黑名单</p>{% endif %}
+    </div>
+  </section>
+
+
+  <form method="post" id="admin-password" class="card grid password-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="change_admin_password"><h2>修改管理员密码</h2><label>当前密码</label><input name="current_password" type="password" required><label>新密码（至少 6 位）</label><input name="new_password" type="password" required><label>确认新密码</label><input name="confirm_password" type="password" required><button type="submit">更新管理员密码</button></form>
+
+  <section class="card records-card" id="view-records" data-page="{{ records_page }}" data-pages="{{ records_pages }}" data-total="{{ records_total }}"><div class="records-heading"><h2>查看记录</h2><div class="records-heading-actions"><span class="hint" id="records-total">共 {{ records_total }} 个邮箱</span><button type="button" class="secondary" id="records-refresh">刷新</button></div></div><form class="records-tools" id="records-search-form"><input name="records_q" value="{{ records_query }}" placeholder="搜索邮箱"><button type="submit">搜索</button><button type="button" class="secondary" id="records-clear-search">重置</button><button type="button" class="danger" id="records-clear-all">清空全部</button></form><div id="records-list"><p class="hint">正在加载最新记录…</p></div><nav class="pagination" id="records-pagination" aria-label="查看记录分页" hidden><button type="button" class="page-btn page-prev" id="records-prev">上一页</button><span class="page-status" id="records-page-status"></span><button type="button" class="page-btn page-next" id="records-next">下一页</button></nav></section>
+
+</main>
+<script>
+  const adminSidebar=document.getElementById('admin-sidebar'),adminToggle=document.getElementById('admin-menu-toggle'),adminOverlay=document.getElementById('admin-sidebar-overlay');
+  function setAdminMenu(open){document.body.classList.toggle('admin-menu-open',open);adminToggle?.setAttribute('aria-expanded',String(open));adminToggle?.setAttribute('aria-label',open?'关闭菜单':'打开菜单');}
+  adminToggle?.addEventListener('click',()=>setAdminMenu(!document.body.classList.contains('admin-menu-open')));
+  adminOverlay?.addEventListener('click',()=>setAdminMenu(false));
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')setAdminMenu(false)});
+  document.querySelectorAll('.admin-nav a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();showAdminSection(a.hash.slice(1));if(innerWidth<768)setAdminMenu(false)}));
+  const adminSections=[...document.querySelectorAll('.admin-nav a')].map(a=>document.querySelector(a.hash)).filter(Boolean);
+  function showAdminSection(id,updateHash=true){
+    const target=document.getElementById(id)||adminSections[0];
+    adminSections.forEach(section=>section.classList.toggle('admin-section-active',section===target));
+    document.querySelectorAll('.admin-nav a').forEach(a=>a.classList.toggle('active',a.hash==='#'+target.id));
+    document.querySelector('.admin-page')?.scrollTo?.(0,0); window.scrollTo(0,0);
+    if(updateHash&&history.replaceState)history.replaceState(null,'','#'+target.id);
+  }
+  showAdminSection(location.hash.slice(1)||'query-stats',false);
+  window.addEventListener('hashchange',()=>showAdminSection(location.hash.slice(1),false));
+
+  (function () {
+    var section = document.getElementById('blacklist-section');
+    if (!section) return;
+    var msg = document.getElementById('bl-msg');
+    var listBox = document.getElementById('bl-list');
+    var addForm = document.getElementById('blacklist-add-form');
+    var input = addForm.querySelector('[name="blacklist_entry"]');
+    var btn = addForm.querySelector('button[type="submit"]');
+
+    function showMsg(text, isError) {
+      msg.textContent = text;
+      msg.className = 'bl-msg feedback-pop ' + (isError ? 'error' : 'ok');
+      clearTimeout(showMsg._t);
+      showMsg._t = setTimeout(function () { msg.textContent = ''; msg.className = 'bl-msg'; }, 6000);
+    }
+    function renderList(entries) {
+      listBox.innerHTML = '';
+      if (!entries || !entries.length) {
+        var p = document.createElement('p'); p.className = 'hint'; p.textContent = '暂无黑名单';
+        listBox.appendChild(p); return;
+      }
+      var ul = document.createElement('ul'); ul.className = 'blacklist';
+      entries.forEach(function (e) {
+        var li = document.createElement('li');
+        var span = document.createElement('span'); span.textContent = e;
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'danger btn-sm bl-remove'; b.dataset.entry = e; b.textContent = '移出';
+        b.addEventListener('click', removeEntry);
+        li.appendChild(span); li.appendChild(b); ul.appendChild(li);
+      });
+      listBox.appendChild(ul);
+    }
+    function ajax(body, done) {
+      fetch('/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+        body: new URLSearchParams(Object.assign({ csrf_token: '{{ csrf_token() }}' }, body))
+      }).then(function (r) { return r.json(); }).then(done)
+        .catch(function () { done({ ok: false, message: '网络错误，请重试' }); });
+    }
+    function removeEntry(ev) {
+      var b = ev.currentTarget;
+      if (!confirm('确定移出黑名单？')) return;
+      b.disabled = true; b.textContent = '移出中…';
+      var row = b.closest('li');
+      ajax({ action: 'remove_blacklist', blacklist_entry: b.dataset.entry }, function (d) {
+        if (d.ok) { if (row) { row.classList.add('removing'); setTimeout(function () { renderList(d.blacklist); }, 200); } else renderList(d.blacklist); showMsg(d.message, false); }
+        else { b.disabled = false; b.textContent = '移出'; showMsg(d.message, true); }
+      });
+    }
+    addForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var val = input.value.trim();
+      if (!val) { showMsg('请输入邮箱或 @域名', true); input.focus(); return; }
+      btn.disabled = true; btn.textContent = '添加中…';
+      ajax({ action: 'add_blacklist', blacklist_entry: val }, function (d) {
+        btn.disabled = false; btn.textContent = '加入黑名单';
+        if (d.ok) { input.value = ''; renderList(d.blacklist); showMsg(d.message, false); }
+        else { showMsg(d.message, true); input.focus(); }
+      });
+    });
+    document.querySelectorAll('.bl-remove').forEach(function (b) { b.addEventListener('click', removeEntry); });
+  })();
+
+  var globalMsgTimer;
+  function showGlobalMsg(message, error) {
+    var el = document.getElementById('admin-global-msg');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = 'bl-msg ' + (error ? 'error' : 'ok');
+    clearTimeout(globalMsgTimer);
+    globalMsgTimer = setTimeout(function () { el.textContent = ''; el.className = 'bl-msg'; }, 6000);
+  }
+  function bindProviderControls(root) {
+    (root || document).querySelectorAll('[data-provider-select]').forEach(function (select) { syncProvider(select); });
+  }
+  document.addEventListener('change', function (event) {
+    if (event.target.matches('[data-provider-select]')) syncProvider(event.target);
+  });
+  document.addEventListener('submit', function (event) {
+    var form = event.target;
+    if (!form.matches('form[method="post"]') || form.id === 'blacklist-add-form') return;
+    if (!form.checkValidity()) return;
+    var submit = form.querySelector('button[type="submit"]');
+    if (!submit || submit.disabled) { event.preventDefault(); return; }
+    if (submit.classList.contains('danger') && !confirm('确定执行此操作？')) { event.preventDefault(); return; }
+    event.preventDefault();
+    var originalText = submit.textContent;
+    form.classList.add('form-pending'); submit.disabled = true;
+    submit.textContent = submit.classList.contains('danger') ? '处理中…' : '保存中…';
+    fetch(form.action || '/admin', {
+      method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'XMLHttpRequest'},
+      body: new URLSearchParams(new FormData(form))
+    }).then(function (r) { if (r.status === 401) { location.href='/admin/login'; throw new Error('登录已失效'); } return r.json(); })
+      .then(function (data) {
+        if (!data.ok) throw new Error(data.message || '操作失败');
+        showGlobalMsg(data.message, false);
+        var action = form.querySelector('[name="action"]');
+        if (action && action.value === 'change_admin_password') form.reset();
+        if (data.refresh_sources) {
+          return fetch('/admin', {headers:{'X-Requested-With':'XMLHttpRequest'}}).then(function(r){return r.text();}).then(function(html){
+            var doc = new DOMParser().parseFromString(html, 'text/html');
+            var fresh = doc.getElementById('sources-card'), current = document.getElementById('sources-card');
+            if (fresh && current) { current.replaceWith(fresh); bindProviderControls(fresh); }
+          });
+        }
+      }).catch(function (error) { if (error.message !== '登录已失效') showGlobalMsg(error.message || '网络错误，请重试', true); })
+      .finally(function () { form.classList.remove('form-pending'); submit.disabled=false; submit.textContent=originalText; });
+  });
+
+  function adminFetchJson(url, options) {
+    return fetch(url, options).then(function (response) {
+      if (response.status === 401) { location.href = '/admin/login'; throw new Error('登录已失效'); }
+      if (!response.ok) throw new Error('请求失败（' + response.status + '）');
+      return response.json();
+    });
+  }
+  function adminTool(body){return adminFetchJson('/admin/tools',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'XMLHttpRequest'},body:new URLSearchParams(Object.assign({csrf_token:'{{ csrf_token() }}'},body))})}
+  document.getElementById('rule-test')?.addEventListener('click',function(){adminTool({action:'test_code_rules',subject:document.getElementById('rule-subject').value,body:document.getElementById('rule-body').value}).then(d=>document.getElementById('rule-result').textContent=d.ok?('识别结果：'+(d.codes.join('、')||'无')):(d.message||'测试失败')).catch(e=>showGlobalMsg(e.message,true));});
+  document.getElementById('perf-refresh')?.addEventListener('click',function(){adminFetchJson('/admin/tools?action=performance').then(d=>{const rows=(d.performance||[]).map(x=>`<tr><td>${escapeAdminText(x.name)}</td><td>${Number(x.priority)||'-'}</td><td>${Number(x.timeout)||'-'}s</td><td>${x.last_ms==null?'-':Number(x.last_ms)}ms</td><td>${x.avg_ms==null?'-':Number(x.avg_ms)}ms</td><td>${Number(x.failures)||0}</td></tr>`).join('');document.getElementById('perf-list').innerHTML='<table><thead><tr><th>邮箱源</th><th>优先级</th><th>超时</th><th>最近</th><th>平均</th><th>失败</th></tr></thead><tbody>'+rows+'</tbody></table>';}).catch(e=>showGlobalMsg(e.message,true));});
+  function escapeAdminText(value){const d=document.createElement('div');d.textContent=String(value??'');return d.innerHTML;}
+  document.getElementById('share-form')?.addEventListener('submit',function(e){e.preventDefault();const form=this;const submit=form.querySelector('button[type="submit"]');const original=submit.textContent;const b=Object.fromEntries(new FormData(form));b.action='create_share';submit.disabled=true;submit.textContent='创建中…';adminTool(b).then(d=>{const box=document.getElementById('share-result');if(d.ok){box.innerHTML=`<div class="share-created"><input readonly value="${escapeAdminText(d.link.url)}"><button type="button" class="secondary share-copy">复制链接</button></div>`;box.querySelector('.share-copy').addEventListener('click',function(){navigator.clipboard.writeText(d.link.url);this.textContent='已复制';});const list=document.getElementById('share-list');list.querySelector('.share-empty')?.remove();const li=document.createElement('li');li.dataset.shareToken=d.link.token;li.innerHTML=`<span><strong>${escapeAdminText(d.link.email)}</strong><small>0/${Number(d.link.max_uses)} 次 · 有效</small></span><div class="share-actions"><button type="button" class="secondary btn-sm share-copy-existing" data-url="${escapeAdminText(d.link.url)}">复制</button><button type="button" class="danger btn-sm share-revoke" data-token="${escapeAdminText(d.link.token)}">撤销</button><button type="button" class="secondary btn-sm share-delete" data-token="${escapeAdminText(d.link.token)}">删除</button></div>`;list.prepend(li);showGlobalMsg('临时链接已创建并加入下方列表',false);}else box.textContent=d.message||'创建失败';}).catch(()=>showGlobalMsg('网络错误，请重试',true)).finally(()=>{submit.disabled=false;submit.textContent=original;});});
+  document.addEventListener('click',function(e){const copy=e.target.closest('.share-copy-existing');if(copy){navigator.clipboard.writeText(copy.dataset.url);const old=copy.textContent;copy.textContent='已复制';setTimeout(()=>copy.textContent=old,1500);return;}const del=e.target.closest('.share-delete');if(del){if(!confirm('确定永久删除这条分享记录？'))return;adminTool({action:'delete_share',token:del.dataset.token}).then(d=>{if(d.ok){del.closest('li').remove();showGlobalMsg('分享记录已删除',false);}});return;}const b=e.target.closest('.share-revoke');if(!b||!confirm('确定撤销？'))return;adminTool({action:'revoke_share',token:b.dataset.token}).then(d=>{if(d.ok){const li=b.closest('li');li.querySelector('small').textContent=li.querySelector('small').textContent.replace('有效','已撤销');li.querySelector('.share-copy-existing')?.remove();b.remove();showGlobalMsg('分享链接已撤销',false);}});});
+</script>
+
+<script>
+  const providerPresets = {
+    gmail: { name: 'Gmail', host: 'imap.gmail.com', placeholder: 'example@gmail.com', label: 'App Password', help: '请先开启 IMAP，并填写 Google App Password。' },
+    qq: { name: 'QQ邮箱', host: 'imap.qq.com', placeholder: '123456@qq.com', label: 'IMAP 授权码', help: '请先开启 IMAP，并填写 QQ 邮箱授权码。' },
+    outlook: { name: 'Outlook / Hotmail', host: 'outlook.office365.com', placeholder: 'example@outlook.com', label: '密码 / App Password', help: 'Microsoft 账户需已允许 IMAP；启用双重验证时请使用应用密码。' },
+    icloud: { name: 'iCloud Mail', host: 'imap.mail.me.com', placeholder: 'example@icloud.com', label: 'App 专用密码', help: '请使用 Apple 账户生成的 App 专用密码。' },
+    netease163: { name: '网易163邮箱', host: 'imap.163.com', placeholder: 'example@163.com', label: 'IMAP 授权码', help: '请在网易邮箱设置中开启 IMAP/SMTP 并生成授权码。' },
+    netease126: { name: '网易126邮箱', host: 'imap.126.com', placeholder: 'example@126.com', label: 'IMAP 授权码', help: '请在网易邮箱设置中开启 IMAP/SMTP 并生成授权码。' },
+    sina: { name: '新浪邮箱', host: 'imap.sina.com', placeholder: 'example@sina.com', label: '密码 / 授权码', help: '请先在新浪邮箱设置中开启 IMAP 服务。' },
+    yahoo: { name: 'Yahoo Mail', host: 'imap.mail.yahoo.com', placeholder: 'example@yahoo.com', label: 'App Password', help: '请使用 Yahoo 账户生成的第三方应用密码。' },
+    zoho: { name: 'Zoho Mail', host: 'imap.zoho.com', placeholder: 'example@zohomail.com', label: '密码 / App Password', help: '请确认 Zoho 账户已启用 IMAP；双重验证账户使用应用密码。' }
+  };
+
+  function syncProvider(select) {
+    const form = select.closest('form');
+    const preset = providerPresets[select.value];
+    const host = form.querySelector('[data-imap-host]');
+    const port = form.querySelector('[name="imap_port"]');
+    const ssl = form.querySelector('[name="use_ssl"]');
+    const accountName = form.querySelector('[name="account_name"]');
+    const user = form.querySelector('[name="imap_user"]');
+    const password = form.querySelector('[name="imap_password"]');
+    const help = form.querySelector('[data-password-help]');
+    if (preset) {
+      host.value = preset.host;
+      port.value = '993';
+      ssl.checked = true;
+      if (!form.querySelector('[name="account_id"]')) accountName.value = preset.name;
+      user.placeholder = preset.placeholder;
+      const passwordLabel = form.querySelector('[data-password-label]');
+      if (passwordLabel) passwordLabel.textContent = preset.label;
+      if (help) help.textContent = preset.help;
+    }
+    const custom = select.value === 'custom';
+    host.readOnly = !custom;
+    port.readOnly = !custom;
+    ssl.disabled = !custom;
+  }
+
+  document.querySelectorAll('[data-provider-select]').forEach((select) => syncProvider(select));
+</script>
+
+<script>
+(function(){
+ const csrf='{{ csrf_token() }}';
+ function post(action,data){return fetch('/admin/tools',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-CSRF-Token':csrf,'X-Requested-With':'XMLHttpRequest'},body:new URLSearchParams(Object.assign({action:action,csrf_token:csrf},data||{}))}).then(r=>{if(r.status===401){location.href='/admin/login';throw new Error('登录已失效')}return r.json()})}
+ function paint(id,h){const b=document.querySelector('[data-health-id="'+CSS.escape(id)+'"]'),d=document.querySelector('[data-health-detail="'+CSS.escape(id)+'"]'),retry=document.querySelector('.account-retry[data-account-id="'+CSS.escape(id)+'"]');if(!b)return;const status=h&&h.status||'unknown';b.className='health-badge health-'+status;b.textContent=status==='ok'?'正常':status==='paused'?'暂停':status==='error'?'异常':'未测试';if(d)d.textContent=h?(h.last_error||h.last_success&&('最近成功 '+h.last_success)||''):'';if(retry)retry.hidden=status!=='paused'}
+ function health(){fetch('/admin/tools?action=health').then(r=>r.json()).then(x=>{if(x.ok)Object.entries(x.health).forEach(([id,h])=>paint(id,h))})}
+ document.addEventListener('click',e=>{const t=e.target.closest('.account-test,.account-retry');if(!t)return;e.preventDefault();const id=t.dataset.accountId,action=t.classList.contains('account-retry')?'reset_circuit':'test_account',old=t.textContent;t.disabled=true;t.textContent=action==='test_account'?'测试中…':'处理中…';post(action,{account_id:id}).then(x=>{if(!x.ok)throw Error(x.message);paint(id,x.health||{});showGlobalMsg(x.message||'测试完成',!x.ok)}).catch(x=>showGlobalMsg(x.message,true)).finally(()=>{t.disabled=false;t.textContent=old})});
+ const recordsBox=document.getElementById('view-records'),recordsList=document.getElementById('records-list'),recordsTotal=document.getElementById('records-total'),recordsPagination=document.getElementById('records-pagination'),recordsStatus=document.getElementById('records-page-status'),recordsPrev=document.getElementById('records-prev'),recordsNext=document.getElementById('records-next'),search=document.getElementById('records-search-form');let recordsPage=1,recordsPages=1,recordsLoading=false;
+ function renderRecords(x){recordsPage=Number(x.page||1);recordsPages=Number(x.pages||1);recordsBox.dataset.page=recordsPage;recordsBox.dataset.pages=recordsPages;recordsBox.dataset.total=Number(x.total||0);recordsTotal.textContent='共 '+Number(x.total||0)+' 个邮箱';recordsList.innerHTML=(x.records||[]).length?(x.records||[]).map(r=>'<details class="mail-item"><summary><b>'+esc(r.email)+'</b><div class="record-summary-actions"><span class="hint">查看 '+Number(r.count||0)+' 次</span><button type="button" class="danger btn-sm record-delete" data-email="'+esc(r.email)+'">删除</button></div></summary><ul>'+((r.times||[]).map(t=>'<li>'+esc(t)+'</li>').join('')||'<li class="hint">暂无时间记录</li>')+'</ul></details>').join(''):'<p class="hint">暂无查看记录</p>';recordsPagination.hidden=recordsPages<=1;recordsStatus.textContent='第 '+recordsPage+' / '+recordsPages+' 页';recordsPrev.disabled=recordsPage<=1;recordsNext.disabled=recordsPage>=recordsPages}
+ function loadRecords(page,quiet){if(recordsLoading)return Promise.resolve();recordsLoading=true;const refresh=document.getElementById('records-refresh');if(!quiet){refresh.disabled=true;refresh.textContent='刷新中…'}const q=new FormData(search).get('records_q')||'';return fetch('/admin/view-records?page='+encodeURIComponent(page||1)+'&q='+encodeURIComponent(q),{cache:'no-store'}).then(r=>{if(r.status===401){location.href='/admin/login';throw Error('登录已失效')}return r.json()}).then(x=>{if(!x.ok)throw Error(x.message||'读取记录失败');renderRecords(x)}).catch(x=>{if(!quiet)showGlobalMsg(x.message,true)}).finally(()=>{recordsLoading=false;if(!quiet){refresh.disabled=false;refresh.textContent='刷新'}})}
+ search.addEventListener('submit',e=>{e.preventDefault();loadRecords(1)});document.getElementById('records-clear-search').onclick=()=>{search.elements.records_q.value='';loadRecords(1)};document.getElementById('records-refresh').onclick=()=>loadRecords(recordsPage);recordsPrev.onclick=()=>{if(recordsPage>1)loadRecords(recordsPage-1)};recordsNext.onclick=()=>{if(recordsPage<recordsPages)loadRecords(recordsPage+1)};
+ document.addEventListener('click',e=>{const t=e.target.closest('.record-delete');if(!t)return;e.preventDefault();if(!confirm('确定删除这条查看记录？'))return;t.disabled=true;post('delete_record',{email:t.dataset.email}).then(x=>{if(!x.ok)throw Error(x.message);return loadRecords(recordsPage,true)}).then(()=>showGlobalMsg('记录已删除',false)).catch(x=>{t.disabled=false;showGlobalMsg(x.message,true)})});
+ document.getElementById('records-clear-all').onclick=function(){if(!confirm('确定清空全部查看记录？此操作无法撤销。'))return;this.disabled=true;post('clear_records').then(x=>{if(!x.ok)throw Error(x.message);return loadRecords(1,true)}).then(()=>showGlobalMsg('全部记录已清空',false)).catch(x=>showGlobalMsg(x.message,true)).finally(()=>{this.disabled=false})};
+ loadRecords(Number(recordsBox.dataset.page||1),true);setInterval(()=>{if(!document.hidden&&document.getElementById('view-records')?.classList.contains('admin-section-active'))loadRecords(recordsPage,true)},5000);
+ function esc(v){const d=document.createElement('div');d.textContent=String(v||'');return d.innerHTML}function renderStats(x){const s=x.stats||{};document.getElementById('stat-today').textContent=s.today_queries||0;document.getElementById('stat-unique-today').textContent=s.today_unique||0;document.getElementById('stat-total').textContent=s.total_queries||0;document.getElementById('stat-unique-total').textContent=s.total_unique||0;const top=document.getElementById('stats-top');top.innerHTML=(s.top||[]).length?(s.top||[]).map(r=>'<li><span>'+esc(r.email)+'</span><b>'+Number(r.count||0)+' 次'+(r.today?' · 今日 '+Number(r.today):'')+'</b></li>').join(''):'<li class="hint">暂无查询数据</li>';const sources=document.getElementById('stats-sources');sources.innerHTML=(s.sources||[]).length?(s.sources||[]).map(r=>'<li><span>'+esc(r.name)+'</span><b>'+({ok:'正常',error:'异常',paused:'暂停'}[r.status]||'未测试')+'</b></li>').join(''):'<li class="hint">暂无邮箱源</li>'}const refreshStats=document.getElementById('stats-refresh');refreshStats.onclick=function(){this.disabled=true;this.textContent='刷新中…';fetch('/admin/tools?action=stats').then(r=>r.json()).then(x=>{if(!x.ok)throw Error(x.message||'读取统计失败');renderStats(x)}).catch(x=>showGlobalMsg(x.message,true)).finally(()=>{this.disabled=false;this.textContent='刷新'})};
+ health();
+})();
+</script>
+</body></html>

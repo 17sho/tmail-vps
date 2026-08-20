@@ -1,0 +1,32 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Production data and credentials
+data/config.json
+data/view_logs.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Runtime files
+*.log
+*.pid
+*.sqlite
+*.sqlite3
+
+# Backups and temporary files
+*.bak
+*.bak-*
+*.backup
+*~
+.DS_Store
+
+# Editors
+.vscode/
+.idea/

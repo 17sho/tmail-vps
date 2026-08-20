@@ -1,0 +1,32 @@
+{
+  "accounts": [],
+  "search_since_days": 20,
+  "max_emails": 20,
+  "admin_password_hash": "",
+  "blacklist": [],
+  "max_concurrency": 4,
+  "imap_timeout_seconds": 12,
+  "code_rules": {
+    "keywords": [
+      "验证码",
+      "校验码",
+      "动态码",
+      "安全码",
+      "临时代码",
+      "临时登录代码",
+      "登录代码",
+      "verification code",
+      "security code",
+      "one-time code",
+      "otp",
+      "pin",
+      "access code",
+      "launch code",
+      "code"
+    ],
+    "min_length": 4,
+    "max_length": 8,
+    "allow_alphanumeric": true
+  },
+  "share_links": []
+}

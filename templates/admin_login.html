@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>管理员登录</title>
+  <link rel="stylesheet" href="/static/style.css?v=13" />
+</head>
+<body>
+  <main class="container login-page">
+    <h1>管理员登录</h1>
+    <form method="post" class="card">
+      <label>管理员密码</label>
+      <input name="password" type="password" required />
+      <button type="submit">登录</button>
+      {% if error %}
+      <p class="error">{{ error }}</p>
+      {% endif %}
+    </form>
+    <p class="footer-link"><a href="/">返回接码页</a></p>
+  </main>
+</body>
+</html>

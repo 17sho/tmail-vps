@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>邮箱接码</title>
+  <link rel="stylesheet" href="/static/style.css?v=18" />
+</head>
+<body>
+  <main class="container public-page">
+    <h1>邮箱查看工具</h1>
+    <p class="hint">输入要查询的收件邮箱。首次显示当前邮件后，将自动检查新邮件。</p>
+
+    <form id="fetch-form" class="card query-card">
+      <label for="email">目标邮箱</label>
+      <input id="email" type="email" placeholder="example@gmail.com" value="{{ shared_email|e }}" {% if shared_email %}readonly{% endif %} required />
+      <input id="share-token" type="hidden" value="{{ share_token|e }}" />
+      <button id="fetch-button" type="submit">查询邮件</button>
+    </form>
+
+    <section id="result" class="card hidden" aria-live="polite"></section>
+  </main>
+
+  <script>
+    const AUTO_REFRESH_INTERVAL_MS = 3000;
+    const AUTO_REFRESH_MAX_DURATION_MS = 60000;
+    const form = document.getElementById('fetch-form');
+    const result = document.getElementById('result');
+    const button = document.getElementById('fetch-button');
+    let requestToken = 0;
+    let activeController = null;
+    let isFetching = false;
+    let currentData = null;
+    let filterText = '';
+    let filterSender = '';
+    let codesOnly = false;
+
+    const escapeHtml = (v) => String(v || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+
+    const messageIds = (data) => new Set((data.emails || []).map((item) => String(item.id || '')).filter(Boolean));
+    const delay = (ms, signal) => new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, ms);
+      if (signal) signal.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(new DOMException('Cancelled', 'AbortError'));
+      }, { once: true });
+    });
+
+    function updateStatus(statusText) {
+      let status = document.getElementById('auto-check-status');
+      if (!status) {
+        status = document.createElement('p');
+        status.id = 'auto-check-status';
+        status.className = 'hint status-live';
+        const heading = result.querySelector('h2');
+        if (heading) heading.insertAdjacentElement('afterend', status);
+        else result.prepend(status);
+      }
+      status.textContent = statusText;
+      status.className = 'hint ' + (statusText.includes('已自动获取') ? 'status-success' : statusText.includes('暂未发现') ? '' : 'status-live');
+    }
+
+    async function fetchLatest(email, signal, refresh = true) {
+      const resp = await fetch('/api/fetch-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, refresh, share_token: document.getElementById('share-token').value }),
+        signal
+      });
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error || '查询失败');
+      return data;
+    }
+
+    async function copyCode(value, trigger) {
+      try {
+        await navigator.clipboard.writeText(value);
+        const old = trigger.textContent;
+        trigger.textContent = '已复制';
+        trigger.classList.add('copied');
+        setTimeout(() => { trigger.textContent = old; trigger.classList.remove('copied'); }, 1200);
+      } catch (_) {
+        const input = document.createElement('textarea'); input.value = value; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove();
+        trigger.textContent = '已复制'; setTimeout(() => { trigger.textContent = '复制'; }, 1200);
+      }
+    }
+
+    result.addEventListener('click', (event) => {
+      const trigger = event.target.closest('.code-copy');
+      if (trigger) copyCode(trigger.dataset.code || '', trigger);
+      const action = event.target.closest('[data-mail-action]');
+      if (action) result.querySelectorAll('.mail-item').forEach((item) => item.open = action.dataset.mailAction === 'expand');
+    });
+    result.addEventListener('input', (event) => {
+      if (!currentData) return;
+      if (event.target.id === 'mail-search') filterText = event.target.value;
+      else if (event.target.id === 'sender-filter') filterSender = event.target.value;
+      else if (event.target.id === 'codes-only') codesOnly = event.target.checked;
+      else return;
+      render(currentData, document.getElementById('auto-check-status')?.textContent || '');
+      const focus = document.getElementById(event.target.id); if (focus) { focus.focus(); focus.setSelectionRange?.(focus.value.length, focus.value.length); }
+    });
+
+    function render(data, statusText = '') {
+      const status = statusText ? `<p id="auto-check-status" class="hint">${escapeHtml(statusText)}</p>` : '';
+      if (!data.emails || !data.emails.length) {
+        result.innerHTML = `<h2>邮件列表</h2>${status}<p>没有查到邮件</p>`;
+        result.classList.remove('result-enter'); void result.offsetWidth; result.classList.add('result-enter');
+        return;
+      }
+      currentData = data;
+      const filtered = data.emails.filter((m) => {
+        const hay = `${m.subject || ''} ${m.from || ''} ${m.preview || ''}`.toLowerCase();
+        return (!filterText || hay.includes(filterText.toLowerCase())) && (!filterSender || String(m.from || '').toLowerCase().includes(filterSender.toLowerCase())) && (!codesOnly || (m.codes || []).length);
+      });
+      const tools = `<div class="mail-tools"><input id="mail-search" placeholder="搜索主题、发件人或内容" value="${escapeHtml(filterText)}"><input id="sender-filter" placeholder="筛选发件人" value="${escapeHtml(filterSender)}"><label><input id="codes-only" type="checkbox" ${codesOnly?'checked':''}> 只看验证码</label><button type="button" class="secondary" data-mail-action="expand">展开全部</button><button type="button" class="secondary" data-mail-action="collapse">折叠全部</button></div>`;
+      const emailList = filtered.map((m, idx) => {
+        const codes = (m.codes || []).map((code) => `<span class="verification-code"><strong>${escapeHtml(code)}</strong><button type="button" class="code-copy" data-code="${escapeHtml(code)}">复制</button></span>`).join('');
+        return `
+        <details class="mail-item" ${idx === 0 ? 'open' : ''}>
+          <summary>
+            <div><b>${escapeHtml(m.subject || '(无主题)')}</b></div>
+            <div class="hint">发件人: ${escapeHtml(m.from || '')}</div>
+            <div class="hint">时间: ${escapeHtml(m.date || '')}</div>
+            <div class="hint mail-preview">预览: ${escapeHtml(m.preview || '(无内容)')}</div>
+          </summary>
+          ${codes ? `<div class="verification-codes"><span class="code-label">验证码</span><div class="code-items">${codes}</div></div>` : ''}
+          <div class="mail-body"><pre>${escapeHtml(m.body || '(空正文)')}</pre></div>
+        </details>
+      `}).join('');
+      result.innerHTML = `<h2>邮件列表（${filtered.length} / ${data.emails.length}）</h2>${status}${tools}${emailList || '<p class="hint">没有符合筛选条件的邮件</p>'}`;
+      result.classList.remove('result-enter');
+      void result.offsetWidth;
+      result.classList.add('result-enter');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (isFetching) {
+        ++requestToken;
+        if (activeController) activeController.abort();
+        isFetching = false;
+        activeController = null;
+        button.disabled = false;
+        button.textContent = '查询邮件';
+        button.classList.remove('cancel-mode');
+        updateStatus('已取消');
+        document.getElementById('email').focus();
+        return;
+      }
+      const token = ++requestToken;
+      const controller = new AbortController();
+      activeController = controller;
+      isFetching = true;
+      const email = document.getElementById('email').value.trim();
+      result.classList.remove('hidden');
+      result.innerHTML = '<p class="hint status-live">正在实时查询邮箱...</p>';
+      result.classList.add('result-enter');
+      button.disabled = false;
+      button.textContent = '取消获取';
+      button.classList.add('cancel-mode');
+
+      try {
+        let data = await fetchLatest(email, controller.signal, false);
+        if (token !== requestToken) return;
+        const initialIds = messageIds(data);
+        const startedAt = Date.now();
+        render(data, '正在自动检查新邮件，最长 60 秒…');
+
+        while (Date.now() - startedAt < AUTO_REFRESH_MAX_DURATION_MS) {
+          await delay(AUTO_REFRESH_INTERVAL_MS, controller.signal);
+          if (token !== requestToken) return;
+          const latest = await fetchLatest(email, controller.signal);
+          if (token !== requestToken) return;
+          const hasNewMessage = [...messageIds(latest)].some((id) => !initialIds.has(id));
+          if (hasNewMessage) {
+            render(latest, '已自动获取到新邮件');
+            return;
+          }
+          data = latest;
+          const elapsed = Math.min(60, Math.round((Date.now() - startedAt) / 1000));
+          updateStatus(`正在自动检查新邮件…已检查 ${elapsed} 秒`);
+        }
+        updateStatus('60 秒内暂未发现新邮件，可再次点击查询继续检查');
+      } catch (error) {
+        if (error.name !== 'AbortError' && token === requestToken) result.innerHTML = `<p class="error status-error">${escapeHtml(error.message)}</p>`;
+      } finally {
+        if (token === requestToken) {
+          isFetching = false;
+          activeController = null;
+          button.disabled = false;
+          button.textContent = '查询邮件';
+          button.classList.remove('cancel-mode');
+        }
+      }
+    });
+    if (document.getElementById('share-token').value && document.getElementById('email').value) form.requestSubmit();
+  </script>
+</body>
+</html>
